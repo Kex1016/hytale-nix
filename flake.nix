@@ -7,32 +7,45 @@
     { self, nixpkgs }:
     let
       pkgs = nixpkgs.legacyPackages.x86_64-linux;
-    in
-    {
-      packages.x86_64-linux.default = self.packages.x86_64-linux.hytale-launcher;
-      packages.x86_64-linux.hytale-launcher = pkgs.stdenv.mkDerivation rec {
-        pname = "hytale-launcher";
-        version = "2026.01.10-5fdaa5c";
 
-        src = pkgs.fetchzip {
-          url = "https://launcher.hytale.com/builds/release/linux/amd64/hytale-launcher-${version}.zip";
-          sha256 = "sha256-cnFgrn4YW4SuAvmlPfuW0lGXziFat61W+tj1LoQbsOQ=";
-        };
+      version = "2026.01.10-5fdaa5c";
+      hytale-launcher-bin = pkgs.fetchzip {
+        url = "https://launcher.hytale.com/builds/release/linux/amd64/hytale-launcher-${version}.zip";
+        sha256 = "sha256-cnFgrn4YW4SuAvmlPfuW0lGXziFat61W+tj1LoQbsOQ=";
+      };
 
-        nativeBuildInputs = [ pkgs.autoPatchelfHook ];
-
-        buildInputs = with pkgs; [
+      libraries =
+        p: with p; [
           libsoup_3
           gdk-pixbuf
           glib
           gtk3
           webkitgtk_4_1
         ];
+    in
+    {
+      packages.x86_64-linux.hytale-launcher = pkgs.stdenv.mkDerivation {
+        pname = "hytale-launcher";
+        inherit version;
+
+        src = hytale-launcher-bin;
+
+        nativeBuildInputs = [ pkgs.autoPatchelfHook ];
+
+        buildInputs = libraries pkgs;
 
         installPhase = ''
           mkdir -p $out/bin
           cp hytale-launcher $out/bin/
         '';
+      };
+
+      packages.x86_64-linux.hytale-launcher-fhs = pkgs.buildFHSEnv {
+        pname = "hytale-launcher";
+        inherit version;
+
+        targetPkgs = p: libraries p;
+        runScript = "${hytale-launcher-bin}/hytale-launcher";
       };
     };
 }
