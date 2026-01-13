@@ -1,0 +1,67 @@
+name: Update Hytale Launcher
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq
+
+      - name: Fetch latest version info
+        id: fetch
+        run: |
+          curl -s https://launcher.hytale.com/version/release/launcher.json > launcher.json
+          VERSION=$(jq -r '.version' launcher.json)
+          URL=$(jq -r '.download_url.linux.amd64.url' launcher.json)
+          SHA256_HEX=$(jq -r '.download_url.linux.amd64.sha256' launcher.json)
+          SHA256_BASE64=$(echo -n "$SHA256_HEX" | xxd -r -p | base64 -w 0)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "url=$URL" >> $GITHUB_OUTPUT
+          echo "sha256=sha256-$SHA256_BASE64" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
+          echo "URL: $URL"
+          echo "SHA256: sha256-$SHA256_BASE64"
+
+      - name: Update flake.nix
+        run: |
+          VERSION="${{ steps.fetch.outputs.version }}"
+          URL="${{ steps.fetch.outputs.url }}"
+          SHA256="${{ steps.fetch.outputs.sha256 }}"
+          perl -i -pe "s/version = \".*\";/version = \"$VERSION\";/" flake.nix
+          perl -i -pe "s|url = \".*\";|url = \"$URL\";|" flake.nix
+          perl -i -pe "s/sha256 = \".*\";/sha256 = \"$SHA256\";/" flake.nix
+
+      - name: Check for changes
+        id: check
+        run: |
+          if git diff --quiet flake.nix; then
+            echo "changed=false" >> $GITHUB_OUTPUT
+          else
+            echo "changed=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create Pull Request
+        if: steps.check.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          title: "Update Hytale Launcher to ${{ steps.fetch.outputs.version }}"
+          body: |
+            Updated Hytale Launcher to version ${{ steps.fetch.outputs.version }}
+            - Version: ${{ steps.fetch.outputs.version }}
+            - URL: ${{ steps.fetch.outputs.url }}
+            - SHA256: ${{ steps.fetch.outputs.sha256 }}
+          branch: update-hytale-launcher
+          commit-message: "Update Hytale Launcher to ${{ steps.fetch.outputs.version }}"
+
